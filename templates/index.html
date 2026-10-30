@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VisionAI — Real-Time Object Detection & Tracking</title>
+  <meta name="description" content="Real-time object detection and tracking using YOLOv8 + Flask + OpenCV. 80 COCO classes with live tracking IDs."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+</head>
+<body>
+
+  <!-- Background -->
+  <div class="bg-canvas" aria-hidden="true">
+    <div class="mesh-grid"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="noise"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo-wrap">
+        <div class="logo-badge">
+          <svg viewBox="0 0 32 32" fill="none">
+            <rect x="2"  y="2"  width="10" height="10" rx="2" stroke="url(#hg)" stroke-width="1.8"/>
+            <rect x="20" y="2"  width="10" height="10" rx="2" stroke="url(#hg)" stroke-width="1.8"/>
+            <rect x="2"  y="20" width="10" height="10" rx="2" stroke="url(#hg)" stroke-width="1.8"/>
+            <rect x="20" y="20" width="10" height="10" rx="2" stroke="url(#hg)" stroke-width="1.8"/>
+            <circle cx="16" cy="16" r="4" fill="url(#hg)"/>
+            <defs>
+              <linearGradient id="hg" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#2563eb"/><stop offset="1" stop-color="#0d9488"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1 class="logo-text">Vision<em>AI</em></h1>
+          <p class="logo-sub">YOLOv8 · OpenCV · Flask</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-model">YOLOv8n · 80 Classes</span>
+        <span class="badge" id="statusBadge">
+          <span class="badge-dot" id="statusDot"></span>
+          <span id="statusText">Initializing…</span>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-container">
+
+    <!-- Controls Bar -->
+    <div class="controls-bar glass-card">
+      <div class="controls-left">
+        <button id="webcamBtn" class="ctrl-btn primary" disabled>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="10" cy="10" r="3.5" fill="currentColor" opacity=".6"/>
+            <circle cx="10" cy="10" r="6.5" stroke-dasharray="3 2"/>
+          </svg>
+          Start Webcam
+        </button>
+        <label class="ctrl-btn secondary" id="uploadLabel">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M10 13V7M7 10l3-3 3 3"/><rect x="3" y="14" width="14" height="3" rx="1" opacity=".5"/>
+          </svg>
+          Upload Video
+          <input type="file" id="videoUpload" accept="video/*" hidden/>
+        </label>
+        <button id="stopBtn" class="ctrl-btn danger" disabled>
+          <svg viewBox="0 0 20 20" fill="none"><rect x="5" y="5" width="10" height="10" rx="2" fill="currentColor"/></svg>
+          Stop
+        </button>
+      </div>
+      <div class="controls-right">
+        <div class="ctrl-group">
+          <label class="ctrl-label" for="confSlider">Confidence Threshold</label>
+          <div class="slider-wrap">
+            <input type="range" id="confSlider" min="10" max="90" value="50" class="slider"/>
+            <span id="confValue" class="slider-val">50%</span>
+          </div>
+        </div>
+        <button id="toggleTrackBtn" class="ctrl-btn toggle active">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M3 10h14M10 3l7 7-7 7"/>
+          </svg>
+          Tracking ON
+        </button>
+      </div>
+    </div>
+
+    <!-- Detection Layout -->
+    <div class="detection-layout">
+
+      <!-- Video Stream -->
+      <div class="canvas-wrap glass-card" id="canvasWrap">
+        <!-- Corner Brackets -->
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+
+        <!-- Idle Screen -->
+        <div class="idle-screen" id="idleScreen">
+          <div class="idle-icon">
+            <svg viewBox="0 0 80 80" fill="none">
+              <rect x="8" y="18" width="64" height="44" rx="6" stroke="url(#ig)" stroke-width="1.5"/>
+              <circle cx="40" cy="40" r="11" stroke="url(#ig)" stroke-width="1.5" stroke-dasharray="4 3"/>
+              <path d="M10 18l8-8M70 18l-8-8M10 62l8 8M70 62l-8 8" stroke="url(#ig)" stroke-width="1.2" stroke-linecap="round"/>
+              <circle cx="40" cy="40" r="4" fill="url(#ig)" opacity=".7"/>
+              <defs>
+                <linearGradient id="ig" x1="8" y1="18" x2="72" y2="62" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#2563eb"/><stop offset="1" stop-color="#0d9488"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <p class="idle-title" id="idleTitle">Loading YOLOv8 Model…</p>
+          <p class="idle-sub" id="idleSub">Please wait while the model initializes</p>
+          <div class="model-bar-wrap" id="modelBarWrap">
+            <div class="model-bar" id="modelBar"></div>
+          </div>
+          <div class="idle-features" id="idleFeatures" style="display:none">
+            <span>✦ YOLOv8 COCO-SSD</span>
+            <span>✦ Centroid Tracking</span>
+            <span>✦ 80 Object Classes</span>
+          </div>
+        </div>
+
+        <!-- MJPEG Stream -->
+        <img id="streamImg" class="stream-img hidden"
+             src="/video_feed"
+             alt="Live detection stream"/>
+
+        <!-- Scan line overlay -->
+        <div class="scan-overlay" id="scanOverlay" style="display:none"></div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+
+        <!-- Live Metrics -->
+        <div class="glass-card sidebar-card">
+          <div class="card-header">
+            <span class="card-title">Live Metrics</span>
+            <span class="live-pill"><span class="live-dot"></span>LIVE</span>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric">
+              <span class="metric-val" id="metFPS">--</span>
+              <span class="metric-lbl">FPS</span>
+            </div>
+            <div class="metric">
+              <span class="metric-val" id="metObjects">0</span>
+              <span class="metric-lbl">Objects</span>
+            </div>
+            <div class="metric">
+              <span class="metric-val" id="metTracks">0</span>
+              <span class="metric-lbl">Tracks</span>
+            </div>
+            <div class="metric">
+              <span class="metric-val" id="metInference">--</span>
+              <span class="metric-lbl">ms/frame</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detections -->
+        <div class="glass-card sidebar-card">
+          <div class="card-header">
+            <span class="card-title">Detections</span>
+            <span class="det-count" id="detCount">0</span>
+          </div>
+          <div class="detections-list" id="detectionsList">
+            <div class="no-det">No detections yet</div>
+          </div>
+        </div>
+
+        <!-- Class Summary -->
+        <div class="glass-card sidebar-card">
+          <div class="card-header">
+            <span class="card-title">Class Summary</span>
+          </div>
+          <div class="classes-list" id="classesList">
+            <div class="no-det">Awaiting detections…</div>
+          </div>
+        </div>
+
+        <!-- Session Stats -->
+        <div class="glass-card sidebar-card">
+          <div class="total-row">
+            <span class="total-label">Total Detected</span>
+            <span class="total-val" id="totalDetected">0</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">Unique Classes</span>
+            <span class="total-val" id="totalClasses">0</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">Max Simultaneous</span>
+            <span class="total-val" id="maxSimul">0</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
